@@ -42,6 +42,74 @@ This repository contains C-language examples that link to the native library tar
 
 There's also a (small) [contributor guide](https://github.com/gfx-rs/wgpu-native/wiki/Contributing).
 
+## Emscripten
+
+wgpu-native builds for `wasm32-unknown-emscripten`, where it renders through WebGL 2 (wgpu's
+GLES backend). That is the only backend available there, so the desktop backends are disabled:
+
+```sh
+rustup target add wasm32-unknown-emscripten
+source /path/to/emsdk/emsdk_env.sh   # exports EMSDK, which bindgen needs for the wasm32 headers
+
+make lib-native-emscripten
+# equivalent to:
+cargo rustc --lib --crate-type staticlib --target wasm32-unknown-emscripten \
+    --no-default-features --features wgsl,gles
+```
+
+Only the static library is produced: `emcc` refuses to link the `cdylib` variant of the crate
+(an Emscripten module needs an entry point), so applications link
+`target/wasm32-unknown-emscripten/debug/libwgpu_native.a` into their own module:
+
+```sh
+em++ main.cpp libwgpu_native.a -I ffi -I ffi/webgpu-headers -std=c++20 \
+    -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
+    -sGL_ENABLE_GET_PROC_ADDRESS -sSTACK_SIZE=2097152 \
+    -sALLOW_MEMORY_GROWTH=1 -fwasm-exceptions \
+    -o index.html
+```
+
+* `-sGL_ENABLE_GET_PROC_ADDRESS` — wgpu-hal loads every GL entry point through
+  `eglGetProcAddress`, which Emscripten only links in with this setting.
+* `-sSTACK_SIZE` — Emscripten defaults to a 64 KiB stack, which is far too small for
+  wgpu-core/naga; 2 MiB is a safe starting point.
+* `-fwasm-exceptions` — Rust panics are compiled with WebAssembly exceptions.
+
+`Browser.getCanvas()` is just `Module['canvas']` in current Emscripten versions, and its EGL
+implementation always renders into that canvas, so it has to be assigned before the module
+starts:
+
+```html
+<canvas id="canvas" width="640" height="480"></canvas>
+<script>
+  var Module = { canvas: document.getElementById('canvas') };
+</script>
+<script src="index.js"></script>
+```
+
+Surfaces are then created from an HTML canvas with
+`WGPUEmscriptenSurfaceSourceCanvasHTMLSelector`:
+
+```c
+WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvas = {0};
+canvas.chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector;
+canvas.selector = (WGPUStringView){ .data = "#canvas", .length = WGPU_STRLEN };
+
+WGPUSurfaceDescriptor descriptor = {0};
+descriptor.nextInChain = &canvas.chain;
+WGPUSurface surface = wgpuInstanceCreateSurface(instance, &descriptor);
+```
+
+> [!NOTE]
+> Emscripten's EGL implementation, which the backend renders through, always binds to the
+> Emscripten module canvas, so `selector` has to resolve to that element. Leaving the structure
+> out of the chain is equivalent to selecting the module canvas.
+
+A complete C++ example lives in [examples/emscripten](examples/emscripten); build it with
+`make example-emscripten` and serve `examples/emscripten/build` over HTTP
+(`make run-example-emscripten`), since browsers refuse to fetch `.wasm` files from `file://`
+URLs.
+
 ## Minimum Supported Rust Version
 
 The minimum supported Rust version (MSRV) for wgpu-native is **1.87**. MSRV bumps are considered breaking changes.

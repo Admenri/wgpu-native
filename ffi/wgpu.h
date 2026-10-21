@@ -41,6 +41,8 @@ typedef enum WGPUNativeSType
     WGPUSType_SamplerDescriptorExtras = 0x0003000B,
     /** Identifies @ref WGPUSurfaceSourceOhosNativeWindow. */
     WGPUSType_SurfaceSourceOhosNativeWindow = 0x0003000C,
+    /** Identifies @ref WGPUEmscriptenSurfaceSourceCanvasHTMLSelector. */
+    WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector = 0x0003000D,
     WGPUNativeSType_Force32 = 0x7FFFFFFF
 } WGPUNativeSType;
 
@@ -1414,6 +1416,33 @@ typedef struct WGPUSurfaceSourceOhosNativeWindow
      */
     void *window;
 } WGPUSurfaceSourceOhosNativeWindow WGPU_STRUCTURE_ATTRIBUTE;
+
+/**
+ * Chained in @ref WGPUSurfaceDescriptor to make a @ref WGPUSurface that
+ * presents into an HTML `<canvas>` element when built with Emscripten
+ * (`wasm32-unknown-emscripten`).
+ *
+ * This is the Emscripten counterpart of `WGPUSurfaceDescriptorFromCanvasHTMLSelector`
+ * from the deprecated Emscripten WebGPU bindings, and it is only meaningful for
+ * surfaces created on the `wasm32-unknown-emscripten` target; on other targets
+ * it is ignored and surface creation fails as usual.
+ */
+typedef struct WGPUEmscriptenSurfaceSourceCanvasHTMLSelector
+{
+    WGPUChainedStruct chain;
+    /**
+     * A CSS selector (or element id) of the canvas element the surface
+     * presents into, for example `"#canvas"` or `"canvas"`.
+     *
+     * The selector must resolve to a `<canvas>` element. Note that Emscripten's
+     * EGL implementation (which wgpu-native's Emscripten backend renders
+     * through) always binds to the Emscripten module canvas
+     * (`Module['canvas']`, defaulting to the element with id `canvas`), so
+     * selecting another element currently has no effect on where the frames are
+     * presented.
+     */
+    WGPUStringView selector;
+} WGPUEmscriptenSurfaceSourceCanvasHTMLSelector WGPU_STRUCTURE_ATTRIBUTE;
 
 typedef enum WGPUPolygonMode
 {

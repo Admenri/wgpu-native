@@ -737,12 +737,12 @@ pub enum ShaderParseError {
 #[inline]
 pub unsafe fn map_shader_module<'a>(
     _: &native::WGPUShaderModuleDescriptor,
-    spirv: Option<&native::WGPUShaderSourceSPIRV>,
-    wgsl: Option<&native::WGPUShaderSourceWGSL>,
-    glsl: Option<&native::WGPUShaderSourceGLSL>,
+    _spirv: Option<&native::WGPUShaderSourceSPIRV>,
+    _wgsl: Option<&native::WGPUShaderSourceWGSL>,
+    _glsl: Option<&native::WGPUShaderSourceGLSL>,
 ) -> Result<wgc::pipeline::ShaderModuleSource<'a>, ShaderParseError> {
     #[cfg(feature = "wgsl")]
-    if let Some(wgsl) = wgsl {
+    if let Some(wgsl) = _wgsl {
         let str_slice: &str = string_view_into_str(wgsl.code).unwrap_or("");
         return Ok(wgc::pipeline::ShaderModuleSource::Wgsl(Cow::Borrowed(
             str_slice,
@@ -750,7 +750,7 @@ pub unsafe fn map_shader_module<'a>(
     }
 
     #[cfg(feature = "spirv")]
-    if let Some(spirv) = spirv {
+    if let Some(spirv) = _spirv {
         let slice = make_slice(spirv.code, spirv.codeSize as usize);
         // Parse the given shader code and store its representation.
         let options = naga::front::spv::Options {
@@ -766,7 +766,7 @@ pub unsafe fn map_shader_module<'a>(
     }
 
     #[cfg(feature = "glsl")]
-    if let Some(glsl) = glsl {
+    if let Some(glsl) = _glsl {
         let str_slice: &str = string_view_into_str(glsl.code).unwrap_or("");
         let mut options = naga::front::glsl::Options::from(
             map_shader_stage(glsl.stage)
@@ -1880,6 +1880,7 @@ pub unsafe fn map_surface(
     android: Option<&native::WGPUSurfaceSourceAndroidNativeWindow>,
     _swap_chain_panel: Option<&native::WGPUSurfaceSourceSwapChainPanel>,
     ohos: Option<&native::WGPUSurfaceSourceOhosNativeWindow>,
+    _emscripten_canvas: Option<&native::WGPUEmscriptenSurfaceSourceCanvasHTMLSelector>,
 ) -> CreateSurfaceParams {
     if let Some(win) = win {
         let display_handle = raw_window_handle::WindowsDisplayHandle::new();
@@ -1960,6 +1961,17 @@ pub unsafe fn map_surface(
         return CreateSurfaceParams::SwapChainPanel(swap_chain_panel.panelNative);
     }
 
+    // On Emscripten there is no native windowing system: the surface is backed
+    // by an HTML canvas, either the one named by
+    // `WGPUEmscriptenSurfaceSourceCanvasHTMLSelector` or the Emscripten module
+    // canvas when that structure is not chained.
+    #[cfg(target_os = "emscripten")]
+    {
+        let selector = _emscripten_canvas.and_then(|canvas| string_view_into_str(canvas.selector));
+        CreateSurfaceParams::Raw(crate::emscripten::surface_handles(selector))
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
     panic!("Error: Unsupported Surface");
 }
 

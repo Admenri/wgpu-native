@@ -14,11 +14,23 @@ fn sdk_path(sdk_name: &str) -> String {
         .to_owned()
 }
 
+/// Emscripten sysroot, used to lay out the bindings for
+/// `wasm32-unknown-emscripten` when the Emscripten SDK is available.
+fn emscripten_sysroot() -> Option<PathBuf> {
+    let sysroot = PathBuf::from(env::var("EMSDK").ok()?)
+        .join("upstream")
+        .join("emscripten")
+        .join("cache")
+        .join("sysroot");
+    sysroot.is_dir().then_some(sysroot)
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=ffi/webgpu-headers/webgpu.h");
     println!("cargo:rerun-if-changed=ffi/wgpu.h");
     println!("cargo:rerun-if-env-changed=TARGET");
     println!("cargo:rerun-if-env-changed=BINDGEN_EXTRA_CLANG_ARGS");
+    println!("cargo:rerun-if-env-changed=EMSDK");
 
     #[rustfmt::skip]
     let types_to_rename = vec![
@@ -89,11 +101,50 @@ fn main() {
             "aarch64-apple-darwin" | "x86_64-apple-darwin" => {
                 builder = builder.clang_arg("-isysroot").clang_arg(sdk_path("macosx"));
             }
+            // Lay the bindings out for wasm32 (32-bit pointers) instead of the
+            // host, otherwise every structure containing a pointer or a
+            // `size_t` would have the wrong size and offset on Emscripten.
+            "wasm32-unknown-emscripten" => {
+                builder = builder.clang_arg("--target=wasm32-unknown-emscripten");
+                match emscripten_sysroot() {
+                    Some(sysroot) => {
+                        // Clang's Emscripten toolchain does not search
+                        // `<sysroot>/include` on its own (emcc passes those
+                        // directories explicitly), so add them by hand.
+                        for dir in [sysroot.join("include"), sysroot.join("include/compat")] {
+                            if dir.is_dir() {
+                                builder = builder.clang_arg(format!(
+                                    "-I{}",
+                                    dir.display().to_string().replace('\\', "/")
+                                ));
+                            }
+                        }
+                    }
+                    // Without the Emscripten SDK there is no libc for that
+                    // target, so fall back to Clang's freestanding headers
+                    // (they are still laid out for wasm32).
+                    None => {
+                        builder = builder.clang_arg("-ffreestanding");
+                    }
+                }
+            }
             _ => {}
         }
     }
 
-    let bindings = builder.generate().expect("Unable to generate bindings");
+    let bindings = builder.generate().unwrap_or_else(|error| {
+        if env::var("TARGET").as_deref() == Ok("wasm32-unknown-emscripten")
+            && emscripten_sysroot().is_none()
+        {
+            panic!(
+                "Unable to generate bindings: {error}\n\n\
+                 hint: building for Emscripten needs the Emscripten SDK so that bindgen can find \
+                 the wasm32 libc headers. Activate the SDK (`source ./emsdk_env.sh`, which exports \
+                 `EMSDK`), or point `BINDGEN_EXTRA_CLANG_ARGS` at the headers."
+            );
+        }
+        panic!("Unable to generate bindings: {error}");
+    });
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
         .write_to_file(out_path.join("bindings.rs"))

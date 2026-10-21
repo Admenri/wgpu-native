@@ -42,6 +42,9 @@ version = "29.0.1"
 crate-type = ["cdylib", "staticlib"]
 
 [features]
+# Emscripten (`wasm32-unknown-emscripten`) builds only support the GLES
+# (WebGL 2) backend, so build them with
+# `--no-default-features --features wgsl,gles`.
 default = ["wgsl", "spirv", "glsl", "dx12", "metal", "vulkan", "gles"]
 
 ## Enables the DX12 backend on Windows.
@@ -105,7 +108,7 @@ workspace = true
 [dependencies.hal]
 workspace = true
 
-[target.'cfg(all(unix, not(target_os = "ios"), not(target_os = "macos")))'.dependencies]
+[target.'cfg(all(unix, not(target_os = "ios"), not(target_os = "macos"), not(target_os = "emscripten")))'.dependencies]
 hal = { workspace = true, features = ["renderdoc"] }
 
 [target.'cfg(windows)'.dependencies]

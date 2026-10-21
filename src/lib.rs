@@ -1,4 +1,8 @@
 #![allow(clippy::missing_safety_doc)]
+// On `wasm32` (including Emscripten) wgpu-core's types are `!Send`/`!Sync` unless
+// `fragile-send-sync-non-atomic-wasm` is enabled, which is the supported default for the
+// single-threaded WebAssembly targets. Sharing them through `Arc` is still sound there.
+#![cfg_attr(target_arch = "wasm32", allow(clippy::arc_with_non_send_sync))]
 
 use conv::{
     from_u64_bits, map_adapter_type, map_backend_type, map_bind_group_entry,
@@ -31,6 +35,8 @@ use wgc::{
 use crate::conv::map_primitive_state;
 
 pub mod conv;
+#[cfg(target_os = "emscripten")]
+pub mod emscripten;
 pub mod logging;
 pub mod unimplemented;
 pub mod utils;
@@ -442,16 +448,27 @@ const DEFAULT_DEVICE_LOST_HANDLER: DeviceLostCallback = DeviceLostCallback {
     userdata: utils::Userdata::NULL,
 };
 
+/// Boxed source of an [`Error`].
+///
+/// Errors reported by wgpu-core are only `Send` when it is built with the
+/// `fragile-send-sync-non-atomic-wasm` feature, which is off by default on
+/// `wasm32` targets such as Emscripten. Drop the `Send` bound there so that
+/// WebAssembly builds can still wrap them.
+#[cfg(not(target_arch = "wasm32"))]
+type ErrorSource = Box<dyn error::Error + Send + 'static>;
+#[cfg(target_arch = "wasm32")]
+type ErrorSource = Box<dyn error::Error + 'static>;
+
 #[derive(Debug)]
 pub enum Error {
     DeviceLost {
-        source: Box<dyn error::Error + Send + 'static>,
+        source: ErrorSource,
     },
     OutOfMemory {
-        source: Box<dyn error::Error + Send + 'static>,
+        source: ErrorSource,
     },
     Validation {
-        source: Box<dyn error::Error + Send + 'static>,
+        source: ErrorSource,
         description: String,
     },
 }
@@ -2802,7 +2819,8 @@ pub unsafe extern "C" fn wgpuInstanceCreateSurface(
             WGPUSType_SurfaceSourceMetalLayer => native::WGPUSurfaceSourceMetalLayer,
             WGPUSType_SurfaceSourceAndroidNativeWindow => native::WGPUSurfaceSourceAndroidNativeWindow,
             WGPUSType_SurfaceSourceSwapChainPanel => native::WGPUSurfaceSourceSwapChainPanel,
-            WGPUSType_SurfaceSourceOhosNativeWindow => native::WGPUSurfaceSourceOhosNativeWindow)
+            WGPUSType_SurfaceSourceOhosNativeWindow => native::WGPUSurfaceSourceOhosNativeWindow,
+            WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector => native::WGPUEmscriptenSurfaceSourceCanvasHTMLSelector)
     );
 
     let surface_id = match create_surface_params {

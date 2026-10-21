@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>wgpu-native + Emscripten (WebGL 2)</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #101014;
+      color: #d0d0d8;
+      font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    canvas {
+      width: 640px;
+      height: 480px;
+      border: 1px solid #2a2a33;
+      background: #000;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" width="640" height="480" oncontextmenu="event.preventDefault()"></canvas>
+  <div id="status">starting…</div>
+  <script>
+    // Emscripten's `Browser.getCanvas()` is just `Module['canvas']`, and its EGL
+    // implementation always renders into that canvas, so it has to be set
+    // before the module starts.
+    var Module = {
+      canvas: document.getElementById('canvas'),
+      print: (text) => console.log(text),
+      printErr: (text) => console.error(text),
+    };
+
+    const status = document.getElementById('status');
+
+    window.addEventListener('error', (event) => {
+      status.textContent = 'error: ' + event.message;
+      console.log('WINDOW ERROR: ' + event.message + ' | ' + (event.error && event.error.stack));
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason = event.reason;
+      const text = String(reason && reason.stack ? reason.stack : reason).replace(/\n/g, ' | ');
+      status.textContent = 'rejected: ' + text;
+      console.log('UNHANDLED REJECTION: ' + text);
+    });
+
+    // Updated from C++ every rendered frame (see main.cpp).
+    window.wgpuNativeFrames = 0;
+    const timer = setInterval(() => {
+      if (window.wgpuNativeFrames > 0) {
+        status.textContent = 'rendering — ' + window.wgpuNativeFrames + ' frames';
+        clearInterval(timer);
+      }
+    }, 100);
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>

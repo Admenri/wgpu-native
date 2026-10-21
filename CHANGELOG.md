@@ -12,6 +12,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 ## Unreleased
 
 ### Added
+- Support for the Emscripten target (`wasm32-unknown-emscripten`), rendering through WebGL 2 via the GLES backend, together with `WGPUEmscriptenSurfaceSourceCanvasHTMLSelector` / `WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector` to create a surface from an HTML canvas selector, and an [`examples/emscripten`](examples/emscripten) C++ demo.
 - `WGPUDeviceExtras` now exposes `DeviceDescriptor::memory_hints` via `memoryHints` (`WGPUMemoryHints`: `Performance`/`MemoryUsage`/`Manual` with a block-size range); zero-initialized keeps the previous behavior. By @RubyBit in [#619](https://github.com/gfx-rs/wgpu-native/pull/619).
 - Support OpenHarmonyOS raw-window-handle. By @richerfu in [#626](https://github.com/gfx-rs/wgpu-native/pull/626).
 

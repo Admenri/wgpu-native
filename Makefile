@@ -37,7 +37,8 @@ ifeq ($(origin MSYSTEM),undefined) # MSYSTEM env var is defined on msys2
 endif
 
 .PHONY: check test doc clear \
-	lib-native lib-native-release \
+	lib-native lib-native-release lib-native-emscripten \
+	example-emscripten run-example-emscripten \
 	example-capture example-compute example-triangle \
 	example-metal_interop \
 	example-immediates example-immediates-release \
@@ -115,6 +116,35 @@ lib-native: Cargo.lock Cargo.toml Makefile $(WILDCARD_SOURCE)
 
 lib-native-release: Cargo.lock Cargo.toml Makefile $(WILDCARD_SOURCE)
 	cargo build --release $(EXTRA_BUILD_ARGS)
+
+# Emscripten only has the GLES (WebGL 2) backend, so the desktop backends are
+# disabled. Requires `rustup target add wasm32-unknown-emscripten` and an
+# activated Emscripten SDK (see the README).
+#
+# Only the static library is produced: `emcc` refuses to link the `cdylib`
+# variant, because an Emscripten module needs an entry point. Applications link
+# `libwgpu_native.a` into their own module instead.
+EMSCRIPTEN_TARGET=wasm32-unknown-emscripten
+EMSCRIPTEN_LIB=target/$(EMSCRIPTEN_TARGET)/debug/libwgpu_native.a
+
+lib-native-emscripten: Cargo.lock Cargo.toml Makefile $(WILDCARD_SOURCE)
+	cargo rustc --lib --crate-type staticlib --target $(EMSCRIPTEN_TARGET) \
+		--no-default-features --features wgsl,gles
+
+# `-sGL_ENABLE_GET_PROC_ADDRESS` is required because wgpu-hal loads the GL
+# entry points through `eglGetProcAddress`, and `-sSTACK_SIZE` has to be raised
+# well above Emscripten's 64 KiB default for wgpu-core's validation code.
+example-emscripten: lib-native-emscripten
+	em++ -std=c++20 -O1 -g examples/emscripten/main.cpp $(EMSCRIPTEN_LIB) \
+		-I ffi -I ffi/webgpu-headers \
+		-sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
+		-sGL_ENABLE_GET_PROC_ADDRESS -sSTACK_SIZE=2097152 \
+		-sALLOW_MEMORY_GROWTH=1 -fwasm-exceptions \
+		--shell-file examples/emscripten/shell.html \
+		-o examples/emscripten/build/index.html
+
+run-example-emscripten: example-emscripten
+	cd examples/emscripten/build && python -m http.server 8000
 
 examples-debug: lib-native
 	cd examples && $(MKDIR_CMD) "build/Debug" && cd build/Debug && cmake -GNinja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=1 ../..
