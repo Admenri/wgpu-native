@@ -114,6 +114,9 @@ hal = { workspace = true, features = ["renderdoc"] }
 [target.'cfg(windows)'.dependencies]
 hal = { workspace = true, features = ["dx12", "renderdoc"] }
 
+[target.'cfg(windows)'.build-dependencies]
+thunk-rs = "0.3.5"
+
 [dependencies.wgt]
 workspace = true
 

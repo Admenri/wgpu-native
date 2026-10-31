@@ -26,6 +26,9 @@ fn emscripten_sysroot() -> Option<PathBuf> {
 }
 
 fn main() {
+    #[cfg(windows)]
+    thunk::thunk();
+
     println!("cargo:rerun-if-changed=ffi/webgpu-headers/webgpu.h");
     println!("cargo:rerun-if-changed=ffi/wgpu.h");
     println!("cargo:rerun-if-env-changed=TARGET");
